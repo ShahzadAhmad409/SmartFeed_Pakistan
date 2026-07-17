@@ -8,7 +8,6 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="SmartFeed Pakistan")
 
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(web_router.router)
 app.include_router(auth_router.router, prefix="/auth")
