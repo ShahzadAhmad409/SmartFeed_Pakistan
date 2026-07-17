@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8" x-data="adminDashboard()">
+    
+    <div class="mb-8 fade-in">
+        <h1 class="text-3xl font-extrabold text-gray-900">Admin Overview</h1>
+        <p class="text-gray-500">Platform impact and operations.</p>
+    </div>
+
+    <!-- Impact Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10 fade-in" style="animation-delay: 0.1s;">
+        <div class="bg-white rounded-lg shadow p-6 border-t-4 border-smartgreen-500">
+            <h3 class="text-gray-500 text-xs uppercase tracking-wider font-bold">Total Rescued</h3>
+            <p class="text-3xl font-bold text-gray-900 mt-2"><span x-text="stats.meals_rescued"></span> <span class="text-lg font-normal text-gray-500">meals</span></p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6 border-t-4 border-blue-500">
+            <h3 class="text-gray-500 text-xs uppercase tracking-wider font-bold">Food Waste Prevented</h3>
+            <p class="text-3xl font-bold text-gray-900 mt-2"><span x-text="stats.food_waste_prevented_kg"></span> <span class="text-lg font-normal text-gray-500">kg</span></p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6 border-t-4 border-green-500">
+            <h3 class="text-gray-500 text-xs uppercase tracking-wider font-bold">CO2 Emissions Saved</h3>
+            <p class="text-3xl font-bold text-gray-900 mt-2"><span x-text="stats.co2_saved_kg"></span> <span class="text-lg font-normal text-gray-500">kg</span></p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6 border-t-4 border-purple-500">
+            <h3 class="text-gray-500 text-xs uppercase tracking-wider font-bold">Total Users</h3>
+            <p class="text-3xl font-bold text-gray-900 mt-2" x-text="stats.total_users"></p>
+        </div>
+    </div>
+
+    <div class="flex flex-col lg:flex-row gap-8">
+        
+        <!-- NGO Requests -->
+        <div class="lg:w-1/2 bg-white p-6 rounded-xl shadow-md fade-in" style="animation-delay: 0.2s;">
+            <h2 class="text-xl font-bold text-gray-900 mb-6 flex justify-between items-center">
+                Pending NGO Approvals
+                <span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full" x-text="ngoRequests.length + ' Pending'"></span>
+            </h2>
+            
+            <div x-show="ngoRequests.length === 0" class="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">
+                No pending requests.
+            </div>
+
+            <div class="space-y-4">
+                <template x-for="req in ngoRequests" :key="req.id">
+                    <div class="border rounded-lg p-4 bg-gray-50">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h4 class="font-bold text-lg text-gray-900" x-text="req.organization_name"></h4>
+                                <p class="text-sm text-gray-600">Reg: <span x-text="req.registration_number"></span></p>
+                                <p class="text-sm text-gray-600">City: <span x-text="req.city"></span></p>
+                                <p class="text-xs text-gray-500 mt-2" x-text="req.contact_info"></p>
+                            </div>
+                            <button @click="approveNGO(req.id)" class="bg-smartgreen-600 hover:bg-smartgreen-700 text-white px-3 py-1 rounded text-sm transition">
+                                Approve
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Expiring Soon -->
+        <div class="lg:w-1/2 bg-white p-6 rounded-xl shadow-md fade-in" style="animation-delay: 0.3s;">
+            <h2 class="text-xl font-bold text-gray-900 mb-6 flex justify-between items-center">
+                Urgent: Expiring Soon
+                <span class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">Redistribution needed</span>
+            </h2>
+            
+            <div x-show="expiringDonations.length === 0" class="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">
+                No donations expiring within 3 hours.
+            </div>
+
+            <div class="space-y-4">
+                <template x-for="item in expiringDonations" :key="item.donation.id">
+                    <div class="border border-red-200 rounded-lg p-4 bg-red-50">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h4 class="font-bold text-lg text-gray-900" x-text="item.donation.food_name"></h4>
+                                <p class="text-sm text-gray-700"><span x-text="item.donation.quantity"></span> meals • <span x-text="item.donor_name"></span> (<span x-text="item.city || 'Unknown City'"></span>)</p>
+                                <p class="text-sm font-bold text-red-600 mt-1">Expiring in <span x-text="item.hours_left.toFixed(1)"></span> hrs</p>
+                            </div>
+                            <button @click="claimDonation(item.donation.id)" class="bg-white border border-red-300 text-red-700 hover:bg-red-100 px-3 py-1 rounded text-sm transition">
+                                Claim on behalf of NGO
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function adminDashboard() {
+    return {
+        stats: { total_users: 0, meals_rescued: 0, food_waste_prevented_kg: 0, co2_saved_kg: 0 },
+        ngoRequests: [],
+        expiringDonations: [],
+
+        init() {
+            this.fetchStats();
+            this.fetchNGORequests();
+            this.fetchExpiringDonations();
+        },
+
+        async fetchStats() {
+            try {
+                const res = await fetch('/api/admin/stats');
+                if(res.status === 401) window.location.href = '/login';
+                const data = await res.json();
+                this.animateValue('meals_rescued', data.meals_rescued);
+                this.animateValue('food_waste_prevented_kg', data.food_waste_prevented_kg);
+                this.animateValue('co2_saved_kg', data.co2_saved_kg);
+                this.animateValue('total_users', data.total_users);
+            } catch(e) { console.error(e); }
+        },
+        
+        animateValue(key, end) {
+            let start = 0;
+            const duration = 1500;
+            const increment = end > 0 ? (end / (duration / 16)) : 0;
+            
+            const timer = setInterval(() => {
+                start += increment;
+                if (start >= end) {
+                    this.stats[key] = Number.isInteger(end) ? end : end.toFixed(1);
+                    clearInterval(timer);
+                } else {
+                    this.stats[key] = Number.isInteger(end) ? Math.floor(start) : start.toFixed(1);
+                }
+            }, 16);
+        },
+
+        async fetchNGORequests() {
+            try {
+                const res = await fetch('/api/ngo-requests');
+                this.ngoRequests = await res.json();
+            } catch(e) { console.error(e); }
+        },
+
+        async fetchExpiringDonations() {
+            try {
+                const res = await fetch('/api/admin/expiring-donations');
+                this.expiringDonations = await res.json();
+            } catch(e) { console.error(e); }
+        },
+
+        async approveNGO(id) {
+            if(!confirm('Approve this NGO? This will create an admin account for them.')) return;
+            try {
+                const res = await fetch(`/api/ngo-requests/${id}/approve`, { method: 'POST' });
+                const data = await res.json();
+                if(res.ok) {
+                    alert(data.message); // Show credentials for mock purposes
+                    this.fetchNGORequests();
+                    this.fetchStats();
+                }
+            } catch(e) { console.error(e); }
+        },
+
+        async claimDonation(id) {
+            try {
+                const res = await fetch(`/api/donations/${id}/claim`, { method: 'POST' });
+                if(res.ok) {
+                    window.showToast('Claimed for redistribution');
+                    this.fetchExpiringDonations();
+                    this.fetchStats();
+                } else {
+                    const data = await res.json();
+                    window.showToast(data.detail, 'error');
+                }
+            } catch(e) { console.error(e); }
+        }
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="min-h-[80vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 fade-in" x-data="loginForm()">
+    <div class="max-w-md w-full space-y-8 bg-white p-10 rounded-xl shadow-xl">
+        <div>
+            <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                Sign in to your account
+            </h2>
+        </div>
+        <form class="mt-8 space-y-6" @submit.prevent="submitForm">
+            <div class="rounded-md shadow-sm -space-y-px">
+                <div>
+                    <label for="username" class="sr-only">Username</label>
+                    <input id="username" name="username" type="text" required x-model="username"
+                           class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-smartgreen-500 focus:border-smartgreen-500 focus:z-10 sm:text-sm" placeholder="Username">
+                </div>
+                <div>
+                    <label for="password" class="sr-only">Password</label>
+                    <input id="password" name="password" type="password" required x-model="password"
+                           class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-smartgreen-500 focus:border-smartgreen-500 focus:z-10 sm:text-sm" placeholder="Password">
+                </div>
+            </div>
+
+            <div>
+                <button type="submit" :disabled="loading"
+                        class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-smartgreen-600 hover:bg-smartgreen-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-smartgreen-500 transition transform hover:-translate-y-0.5 disabled:opacity-50">
+                    <span x-show="!loading">Sign in</span>
+                    <span x-show="loading">Signing in...</span>
+                </button>
+            </div>
+            <div x-show="errorMsg" class="text-red-500 text-sm text-center mt-2" x-text="errorMsg"></div>
+        </form>
+    </div>
+</div>
+
+<script>
+function loginForm() {
+    return {
+        username: '',
+        password: '',
+        loading: false,
+        errorMsg: '',
+        async submitForm() {
+            this.loading = true;
+            this.errorMsg = '';
+            const formData = new URLSearchParams();
+            formData.append('username', this.username);
+            formData.append('password', this.password);
+
+            try {
+                const res = await fetch('/auth/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Login failed');
+                
+                window.showToast('Logged in successfully!');
+                setTimeout(() => {
+                    if (data.role === 'donor') window.location.href = '/dashboard/donor';
+                    else if (data.role === 'receiver') window.location.href = '/dashboard/receiver';
+                    else window.location.href = '/dashboard/admin';
+                }, 500);
+            } catch (err) {
+                this.errorMsg = err.message;
+            } finally {
+                this.loading = false;
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

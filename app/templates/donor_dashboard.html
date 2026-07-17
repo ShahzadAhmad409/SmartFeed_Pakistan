@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8" x-data="donorDashboard()">
+    
+    <!-- Stats Row -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 fade-in">
+        <div class="bg-white rounded-lg shadow p-6 border-t-4 border-smartgreen-500">
+            <h3 class="text-gray-500 text-sm font-medium">Total Donations</h3>
+            <p class="text-3xl font-bold text-gray-900 mt-2" x-text="stats.total"></p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6 border-t-4 border-blue-500">
+            <h3 class="text-gray-500 text-sm font-medium">Meals Rescued</h3>
+            <p class="text-3xl font-bold text-gray-900 mt-2" x-text="stats.meals"></p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6 border-t-4 border-yellow-500">
+            <h3 class="text-gray-500 text-sm font-medium">Active Donations</h3>
+            <p class="text-3xl font-bold text-gray-900 mt-2" x-text="stats.active"></p>
+        </div>
+    </div>
+
+    <div class="flex flex-col md:flex-row gap-8">
+        <!-- New Donation Form -->
+        <div class="md:w-1/3 bg-white p-6 rounded-xl shadow-md h-fit fade-in" style="animation-delay: 0.1s;">
+            <h2 class="text-xl font-bold text-gray-900 mb-6">Post a Donation</h2>
+            <form @submit.prevent="submitDonation" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Food Name / Description</label>
+                    <input type="text" x-model="form.food_name" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-smartgreen-500 focus:border-smartgreen-500 sm:text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Category</label>
+                    <select x-model="form.category" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-smartgreen-500 focus:border-smartgreen-500 sm:text-sm">
+                        <option value="Cooked Meals">Cooked Meals</option>
+                        <option value="Raw Ingredients">Raw Ingredients</option>
+                        <option value="Baked Goods">Baked Goods</option>
+                        <option value="Packaged Items">Packaged Items</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Quantity (approx meals)</label>
+                    <input type="number" min="1" x-model="form.quantity" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-smartgreen-500 focus:border-smartgreen-500 sm:text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Hours before expiry</label>
+                    <input type="number" min="1" max="72" x-model="form.hours_before_expiry" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-smartgreen-500 focus:border-smartgreen-500 sm:text-sm">
+                </div>
+                
+                <div class="pt-2">
+                    <p class="text-xs text-gray-500 mb-2">Your current location will be used to help receivers find this donation.</p>
+                    <button type="button" @click="getLocation" class="text-sm text-smartgreen-600 hover:text-smartgreen-800 flex items-center">
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        <span x-text="locationStatus">Get Location</span>
+                    </button>
+                </div>
+
+                <button type="submit" :disabled="loading || !form.lat"
+                        class="w-full mt-4 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-smartgreen-600 hover:bg-smartgreen-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-smartgreen-500 disabled:opacity-50 transition">
+                    Post Donation
+                </button>
+            </form>
+        </div>
+
+        <!-- Donation History -->
+        <div class="md:w-2/3 bg-white p-6 rounded-xl shadow-md fade-in" style="animation-delay: 0.2s;">
+            <h2 class="text-xl font-bold text-gray-900 mb-6">Your Donations</h2>
+            
+            <div x-show="donations.length === 0" class="text-center py-10 text-gray-500">
+                You haven't posted any donations yet.
+            </div>
+
+            <div class="space-y-4">
+                <template x-for="(donation, index) in donations" :key="donation.id">
+                    <div class="border rounded-lg p-4 flex justify-between items-center transition transform hover:-translate-y-1 hover:shadow-md"
+                         :class="{'bg-gray-50': donation.status === 'claimed', 'border-red-200': donation.is_expired && donation.status === 'available'}">
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <h4 class="font-bold text-lg text-gray-900" x-text="donation.food_name"></h4>
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                      :class="{
+                                          'bg-green-100 text-green-800': donation.status === 'available' && !donation.is_expired,
+                                          'bg-gray-100 text-gray-800': donation.status === 'claimed',
+                                          'bg-red-100 text-red-800': donation.is_expired && donation.status === 'available'
+                                      }"
+                                      x-text="donation.status === 'claimed' ? 'Claimed' : (donation.is_expired ? 'Expired' : 'Available')">
+                                </span>
+                            </div>
+                            <p class="text-sm text-gray-500 mt-1">
+                                <span x-text="donation.quantity"></span> meals • <span x-text="donation.category"></span>
+                            </p>
+                            <p class="text-xs text-gray-400 mt-1" x-text="new Date(donation.created_at).toLocaleString()"></p>
+                        </div>
+                        <div x-show="donation.status === 'available'">
+                            <button @click="deleteDonation(donation.id)" class="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 p-2 rounded-full transition">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function donorDashboard() {
+    return {
+        donations: [],
+        stats: { total: 0, meals: 0, active: 0 },
+        form: {
+            food_name: '', category: 'Cooked Meals', quantity: 10, hours_before_expiry: 4, lat: null, lng: null
+        },
+        loading: false,
+        locationStatus: 'Get Location',
+        
+        init() {
+            this.fetchDonations();
+        },
+        
+        getLocation() {
+            this.locationStatus = 'Locating...';
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        this.form.lat = position.coords.latitude;
+                        this.form.lng = position.coords.longitude;
+                        this.locationStatus = 'Location acquired ✓';
+                        window.showToast('Location acquired');
+                    },
+                    (error) => {
+                        this.locationStatus = 'Failed. Ensure permissions.';
+                        window.showToast('Failed to get location', 'error');
+                    }
+                );
+            } else {
+                this.locationStatus = 'Geolocation not supported';
+            }
+        },
+
+        async fetchDonations() {
+            try {
+                const res = await fetch('/api/donations/my');
+                if(res.status === 401) window.location.href = '/login';
+                this.donations = await res.json();
+                this.calculateStats();
+            } catch (e) {
+                console.error(e);
+            }
+        },
+
+        calculateStats() {
+            const finalTotal = this.donations.length;
+            const finalMeals = this.donations.filter(d => d.status === 'claimed').reduce((sum, d) => sum + d.quantity, 0);
+            const finalActive = this.donations.filter(d => d.status === 'available' && !d.is_expired).length;
+            
+            this.animateValue('total', finalTotal);
+            this.animateValue('meals', finalMeals);
+            this.animateValue('active', finalActive);
+        },
+
+        animateValue(key, end) {
+            let start = 0;
+            const duration = 1500;
+            const increment = end > 0 ? (end / (duration / 16)) : 0;
+            
+            const timer = setInterval(() => {
+                start += increment;
+                if (start >= end) {
+                    this.stats[key] = end;
+                    clearInterval(timer);
+                } else {
+                    this.stats[key] = Math.floor(start);
+                }
+            }, 16);
+        },
+
+        async submitDonation() {
+            if (!this.form.lat) {
+                window.showToast('Please get location first', 'error');
+                return;
+            }
+            this.loading = true;
+            try {
+                const res = await fetch('/api/donations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.form)
+                });
+                if(res.ok) {
+                    window.showToast('Donation posted successfully!');
+                    this.form.food_name = '';
+                    this.form.quantity = 10;
+                    this.fetchDonations();
+                } else {
+                    const data = await res.json();
+                    window.showToast(data.detail || 'Error posting', 'error');
+                }
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async deleteDonation(id) {
+            if(!confirm('Are you sure you want to remove this donation?')) return;
+            try {
+                const res = await fetch(`/api/donations/${id}`, { method: 'DELETE' });
+                if(res.ok) {
+                    window.showToast('Donation removed');
+                    this.fetchDonations();
+                } else {
+                    window.showToast('Error removing', 'error');
+                }
+            } catch(e) {
+                console.error(e);
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

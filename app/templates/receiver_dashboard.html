@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8" x-data="receiverDashboard()">
+    
+    <div class="mb-6 flex justify-between items-center fade-in">
+        <h1 class="text-2xl font-extrabold text-gray-900">Nearby Food Donations</h1>
+        <button @click="fetchNearby" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-md text-sm font-medium transition shadow-sm flex items-center">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            Refresh List
+        </button>
+    </div>
+
+    <div x-show="!locationAcquired" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 fade-in">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm text-yellow-700">
+                    We need your location to show nearby donations. Please allow location access.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex flex-col lg:flex-row gap-6 h-[70vh]">
+        <!-- List View -->
+        <div class="lg:w-1/3 bg-white rounded-xl shadow-md overflow-hidden flex flex-col fade-in" style="animation-delay: 0.1s;">
+            <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
+                <h2 class="font-bold text-gray-700">Top Matches</h2>
+                <span class="text-xs bg-smartgreen-100 text-smartgreen-800 px-2 py-1 rounded-full" x-text="donations.length + ' found'"></span>
+            </div>
+            <div class="overflow-y-auto flex-1 p-4 space-y-4">
+                
+                <div x-show="loading" class="text-center py-10 text-gray-500">
+                    Finding donations near you...
+                </div>
+                
+                <div x-show="!loading && donations.length === 0 && locationAcquired" class="text-center py-10 text-gray-500">
+                    No active donations found nearby at the moment.
+                </div>
+
+                <template x-for="(item, index) in donations" :key="item.donation.id">
+                    <div class="border rounded-lg p-4 transition hover:shadow-md bg-white relative overflow-hidden group cursor-pointer"
+                         @click="focusOnMap(item.donation.lat, item.donation.lng)"
+                         :class="{'border-red-300': item.hours_left < 3, 'border-gray-200': item.hours_left >= 3}">
+                        
+                        <div x-show="item.hours_left < 3" class="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-bl-lg">
+                            Expiring Soon
+                        </div>
+
+                        <h3 class="font-bold text-lg text-gray-900 pr-16" x-text="item.donation.food_name"></h3>
+                        <p class="text-sm text-gray-600 mt-1" x-text="item.donor_name"></p>
+                        
+                        <div class="mt-3 flex items-center justify-between text-sm">
+                            <span class="flex items-center text-gray-500">
+                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path></svg>
+                                <span x-text="item.distance.toFixed(1) + ' km'"></span>
+                            </span>
+                            <span class="font-medium bg-gray-100 px-2 py-1 rounded text-gray-700" x-text="item.donation.quantity + ' meals'"></span>
+                        </div>
+                        
+                        <button @click.stop="claimDonation(item.donation.id)" class="mt-4 w-full bg-smartgreen-50 text-smartgreen-700 hover:bg-smartgreen-600 hover:text-white border border-smartgreen-200 py-2 rounded transition font-medium text-sm">
+                            Claim Now
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Map View -->
+        <div class="lg:w-2/3 bg-white rounded-xl shadow-md relative fade-in" style="animation-delay: 0.2s;">
+            <div id="map" class="w-full h-full rounded-xl z-0"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+function receiverDashboard() {
+    return {
+        donations: [],
+        lat: null,
+        lng: null,
+        locationAcquired: false,
+        loading: false,
+        map: null,
+        markers: [],
+        userMarker: null,
+
+        init() {
+            this.initMap();
+            this.getLocation();
+        },
+
+        initMap() {
+            // Default center Pakistan
+            this.map = L.map('map').setView([30.3753, 69.3451], 5);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(this.map);
+        },
+
+        getLocation() {
+            if (navigator.geolocation) {
+                this.loading = true;
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        this.lat = position.coords.latitude;
+                        this.lng = position.coords.longitude;
+                        this.locationAcquired = true;
+                        
+                        // Update Map Center
+                        this.map.setView([this.lat, this.lng], 13);
+                        
+                        // Add User Marker
+                        if(this.userMarker) this.map.removeLayer(this.userMarker);
+                        const userIcon = L.divIcon({
+                            className: 'custom-div-icon',
+                            html: `<div class="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg pulse-marker"></div>`,
+                            iconSize: [16, 16]
+                        });
+                        this.userMarker = L.marker([this.lat, this.lng], {icon: userIcon}).addTo(this.map)
+                            .bindPopup('You are here').openPopup();
+
+                        this.fetchNearby();
+                    },
+                    (error) => {
+                        this.loading = false;
+                        console.error("Location error", error);
+                    }
+                );
+            }
+        },
+
+        async fetchNearby() {
+            if(!this.lat) return;
+            this.loading = true;
+            try {
+                const res = await fetch(`/api/donations/nearby?lat=${this.lat}&lng=${this.lng}`);
+                if(res.status === 401) window.location.href = '/login';
+                this.donations = await res.json();
+                this.updateMapMarkers();
+            } catch (e) {
+                console.error(e);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        updateMapMarkers() {
+            // Clear old markers
+            this.markers.forEach(m => this.map.removeLayer(m));
+            this.markers = [];
+
+            this.donations.forEach(item => {
+                const isUrgent = item.hours_left < 3;
+                const color = isUrgent ? 'bg-red-500' : 'bg-smartgreen-500';
+                const pulseClass = isUrgent ? 'pulse-marker' : '';
+                
+                const icon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div class="w-6 h-6 ${color} rounded-full border-2 border-white shadow-lg ${pulseClass} flex items-center justify-center text-white text-[10px] font-bold">🍔</div>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                });
+
+                const marker = L.marker([item.donation.lat, item.donation.lng], {icon})
+                    .bindPopup(`<b>${item.donation.food_name}</b><br>${item.donation.quantity} meals<br>${item.distance.toFixed(1)} km away`)
+                    .addTo(this.map);
+                
+                this.markers.push(marker);
+            });
+        },
+
+        focusOnMap(lat, lng) {
+            this.map.flyTo([lat, lng], 15);
+        },
+
+        async claimDonation(id) {
+            try {
+                const res = await fetch(`/api/donations/${id}/claim`, { method: 'POST' });
+                if(res.ok) {
+                    window.showToast('Donation claimed successfully!');
+                    this.fetchNearby(); // refresh
+                } else {
+                    const data = await res.json();
+                    window.showToast(data.detail, 'error');
+                }
+            } catch(e) {
+                console.error(e);
+            }
+        }
+    }
+}
+</script>
+{% endblock %}
